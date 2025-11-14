@@ -4,8 +4,6 @@ import { MongoClient, ObjectId } from 'mongodb';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import bcrypt from 'bcrypt';
-import jwt from 'jsonwebtoken';
 
 dotenv.config();
 
@@ -22,6 +20,19 @@ const client = new MongoClient(process.env.MONGODB_URI || 'mongodb://localhost:2
 const dbName = process.env.DB_NAME || 'afterschool';
 let db;
 let inMemoryCart = { userId: new ObjectId('507f1f77bcf86cd799439011'), items: [] };
+
+const sampleLessons = [
+  { _id: new ObjectId('69122bfeabae0cc1bdee6992'), subject: 'art', location: 'Barnet', price: 85, spaces: 4, image: 'art.jpg' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee6993'), subject: 'coding', location: 'Finchley', price: 120, spaces: 4, image: 'coding.jpg' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee6994'), subject: 'dance', location: 'Edgware', price: 65, spaces: 5, image: 'dance.jpg' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee6995'), subject: 'drama', location: 'Wembley', price: 75, spaces: 5, image: 'drama.jpg' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee698e'), subject: 'english', location: 'Colindale', price: 80, spaces: 5, image: 'english.jpg' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee6990'), subject: 'history', location: 'Golders Green', price: 95, spaces: 5, image: 'history.jpg' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee698d'), subject: 'math', location: 'Hendon', price: 100, spaces: 1, image: 'math.jpg' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee6991'), subject: 'music', location: 'Mill Hill', price: 70, spaces: 5, image: 'music.jpg' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee698f'), subject: 'science', location: 'Brent Cross', price: 90, spaces: 5, image: 'science.jpg' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee6996'), subject: 'sports', location: 'Kingsbury', price: 60, spaces: 4, image: 'sports.jpg' }
+];
 
 async function connectDB() {
   try {
@@ -42,7 +53,8 @@ async function connectDB() {
         }),
         findOne: async (query) => {
           if (query._id) {
-            return sampleLessons.find(l => l._id === query._id.$oid || l._id === query._id.toString() || l._id === query._id);
+            const id = typeof query._id === 'string' ? new ObjectId(query._id) : query._id;
+            return sampleLessons.find(l => l._id.equals(id));
           }
           if (query.userId) {
             return inMemoryCart;
@@ -57,7 +69,7 @@ async function connectDB() {
           }
           // Simulate update for lessons (decrement spaces)
           if (filter._id && update.$inc && update.$inc.spaces !== undefined) {
-            const lesson = sampleLessons.find(l => l._id === filter._id.toString());
+            const lesson = sampleLessons.find(l => l._id.equals(filter._id));
             if (lesson) {
               lesson.spaces += update.$inc.spaces;
             }
@@ -65,7 +77,17 @@ async function connectDB() {
           }
           return {};
         },
-        insertOne: async () => ({ insertedId: 'demo-id' }),
+        insertOne: async (doc) => {
+          // Simulate successful insertion for all documents
+          return { insertedId: 'demo-order-id' };
+        },
+        deleteOne: async (filter) => {
+          // Simulate successful deletion for cart items
+          if (filter.lessonId && filter.userId) {
+            inMemoryCart.items = inMemoryCart.items.filter(item => item._id !== filter.lessonId.toString());
+          }
+          return { acknowledged: true };
+        },
         countDocuments: async () => sampleLessons.length,
         listIndexes: async () => ({ toArray: async () => [] }),
         createIndex: async () => {}
@@ -75,19 +97,6 @@ async function connectDB() {
 }
 
 await connectDB();
-
-const sampleLessons = [
-  { _id: 'lesson1', subject: 'Math Fundamentals', location: 'London', price: 20, spaces: 10, icon: 'fa-solid fa-square-root-variable' },
-  { _id: 'lesson2', subject: 'English Literature', location: 'London', price: 25, spaces: 10, icon: 'fa-solid fa-book' },
-  { _id: 'lesson3', subject: 'Science Basics', location: 'London', price: 18, spaces: 10, icon: 'fa-solid fa-flask' },
-  { _id: 'lesson4', subject: 'History Studies', location: 'London', price: 22, spaces: 10, icon: 'fa-solid fa-landmark' },
-  { _id: 'lesson5', subject: 'Art and Design', location: 'London', price: 30, spaces: 10, icon: 'fa-solid fa-palette' },
-  { _id: 'lesson6', subject: 'Computer Programming', location: 'London', price: 35, spaces: 10, icon: 'fa-solid fa-code' },
-  { _id: 'lesson7', subject: 'Music Theory', location: 'London', price: 28, spaces: 10, icon: 'fa-solid fa-music' },
-  { _id: 'lesson8', subject: 'Physical Education', location: 'London', price: 15, spaces: 10, icon: 'fa-solid fa-running' },
-  { _id: 'lesson9', subject: 'Geography', location: 'London', price: 20, spaces: 10, icon: 'fa-solid fa-globe' },
-  { _id: 'lesson10', subject: 'Foreign Languages', location: 'London', price: 27, spaces: 10, icon: 'fa-solid fa-language' }
-];
 
 async function renameFields() {
   try {
@@ -115,17 +124,10 @@ async function seedDB() {
       await lessonsCollection.insertMany(sampleLessons);
       console.log('Seeded 10 sample lessons');
     } else {
-      console.log('Lessons already exist, skipping seed');
+      // Reset spaces to 10 for all lessons on server restart
+      await lessonsCollection.updateMany({}, { $set: { spaces: 10 } });
+      console.log('Reset spaces to 10 for all lessons');
     }
-
-    const usersCollection = db.collection('users');
-    const hashedPassword = await bcrypt.hash('password', 10);
-    await usersCollection.updateOne(
-      { user: 'M00123456' },
-      { $set: { password: hashedPassword } },
-      { upsert: true }
-    );
-    console.log('Seeded/updated user: M00123456');
   } catch (error) {
     console.error('Seeding error:', error);
   }
@@ -213,7 +215,7 @@ app.post('/cart/add', async (req, res) => {
     const userId = new ObjectId('507f1f77bcf86cd799439011'); // Fixed demo user ID
     const { lessonId, qty } = req.body;
     if (!lessonId || !qty) return res.status(400).json({ error: 'Lesson ID and quantity required' });
-    const lesson = await db.collection('lesson').findOne({ _id: lessonId });
+    const lesson = await db.collection('lesson').findOne({ _id: new ObjectId(lessonId) });
     if (!lesson || lesson.spaces < qty) return res.status(400).json({ error: 'Lesson not available or insufficient spaces' });
     const cartCollection = db.collection('cart');
     let cart = await cartCollection.findOne({ userId });
@@ -228,7 +230,7 @@ app.post('/cart/add', async (req, res) => {
     }
     await cartCollection.updateOne({ userId }, { $set: { items: cart.items } }, { upsert: true });
     // Decrement lesson spaces
-    await db.collection('lesson').updateOne({ _id: lessonId }, { $inc: { spaces: -qty } });
+    await db.collection('lesson').updateOne({ _id: new ObjectId(lessonId) }, { $inc: { spaces: -qty } });
     res.json({ ok: true });
   } catch (error) {
     res.status(500).json({ error: 'Failed to add to cart' });
@@ -255,43 +257,29 @@ app.post('/cart/remove', async (req, res) => {
 
 
 
-app.post('/login', async (req, res) => {
-  try {
-    const { user, password } = req.body;
-    if (!user || !password) {
-      return res.status(400).json({ error: 'Username and password are required' });
-    }
-    const idRegex = /^M\d{8}$/;
-    if (!idRegex.test(user)) {
-      return res.status(400).json({ error: 'Invalid student ID format' });
-    }
-    const userDoc = await db.collection('users').findOne({ user });
-    if (!userDoc) {
-      return res.status(401).json({ error: 'Student ID or password wrong' });
-    }
-    const isValid = await bcrypt.compare(password, userDoc.password);
-    if (!isValid) {
-      return res.status(401).json({ error: 'Student ID or password wrong' });
-    }
-    const token = jwt.sign({ userId: userDoc._id, user: userDoc.user }, process.env.JWT_SECRET || 'secret', { expiresIn: '1h' });
-    res.json({ ok: true, token });
-  } catch (error) {
-    res.status(500).json({ error: 'Login failed' });
-  }
-});
+
 
 app.post('/orders', async (req, res) => {
   try {
     // For demo purposes, use a fixed user ID since auth is removed
     const userId = new ObjectId('507f1f77bcf86cd799439011'); // Fixed demo user ID
-    const { name, phone, items } = req.body;
-    if (!name || !phone || !items || !Array.isArray(items)) {
+    const { name, phone, paymentMethod, cardNumber, cardName, expiryDate, securityCode, items } = req.body;
+    if (!name || !phone || !paymentMethod || !items || !Array.isArray(items)) {
       return res.status(400).json({ error: 'Invalid order data' });
     }
     const nameRegex = /^[a-zA-Z\s]+$/;
     const phoneRegex = /^\d{10,}$/;
     if (!nameRegex.test(name) || !phoneRegex.test(phone)) {
       return res.status(400).json({ error: 'Invalid name or phone (phone must be at least 10 digits)' });
+    }
+    if (paymentMethod === 'online') {
+      const cardNumberRegex = /^\d{16}$/;
+      const cardNameRegex = /^[a-zA-Z\s]+$/;
+      const expiryDateRegex = /^\d{2}\/\d{2}$/;
+      const securityCodeRegex = /^\d{3}$/;
+      if (!cardNumberRegex.test(cardNumber) || !cardNameRegex.test(cardName) || !expiryDateRegex.test(expiryDate) || !securityCodeRegex.test(securityCode)) {
+        return res.status(400).json({ error: 'Invalid card details' });
+      }
     }
     let total = 0;
     for (const item of items) {
@@ -305,11 +293,25 @@ app.post('/orders', async (req, res) => {
       userId,
       name,
       phone,
+      paymentMethod,
       items,
       total,
       createdAt: new Date().toISOString()
     };
+    if (paymentMethod === 'online') {
+      order.cardNumber = cardNumber;
+      order.cardName = cardName;
+      order.expiryDate = expiryDate;
+      order.securityCode = securityCode;
+    }
     const result = await db.collection('order').insertOne(order);
+    // Remove ordered items from cart
+    const cartCollection = db.collection('cart');
+    let cart = await cartCollection.findOne({ userId });
+    if (cart) {
+      cart.items = cart.items.filter(cartItem => !items.some(orderedItem => orderedItem.lessonId === cartItem._id.toString()));
+      await cartCollection.updateOne({ userId }, { $set: { items: cart.items } });
+    }
     res.json({ ok: true, orderId: result.insertedId });
   } catch (error) {
     res.status(500).json({ error: 'Order creation failed' });
