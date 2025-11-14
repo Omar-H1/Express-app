@@ -18,9 +18,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 app.use(express.static(path.join(__dirname, '../vue-app'), { index: 'index.html' }));
 
-const client = new MongoClient(process.env.MONGODB_URI);
-const dbName = process.env.DB_NAME;
+const client = new MongoClient(process.env.MONGODB_URI || 'mongodb://localhost:27017');
+const dbName = process.env.DB_NAME || 'afterschool';
 let db;
+let inMemoryCart = { userId: new ObjectId('507f1f77bcf86cd799439011'), items: [] };
 
 async function connectDB() {
   try {
@@ -29,22 +30,71 @@ async function connectDB() {
     console.log('Connected to MongoDB');
   } catch (error) {
     console.error('MongoDB connection error:', error);
+    // For demo purposes, use in-memory data if MongoDB fails
+    console.log('Using in-memory data for demo');
+    db = {
+      collection: (name) => ({
+        find: () => ({
+          toArray: async () => sampleLessons,
+          sort: () => ({
+            toArray: async () => sampleLessons.sort((a, b) => a.subject.localeCompare(b.subject))
+          })
+        }),
+        findOne: async (query) => {
+          if (query._id) {
+            return sampleLessons.find(l => l._id === query._id.$oid || l._id === query._id.toString() || l._id === query._id);
+          }
+          if (query.userId) {
+            return inMemoryCart;
+          }
+          return null;
+        },
+        updateOne: async (filter, update, options) => {
+          // Simulate update for cart
+          if (filter.userId && update.$set && update.$set.items) {
+            inMemoryCart.items = update.$set.items;
+            return { acknowledged: true };
+          }
+          // Simulate update for lessons (decrement spaces)
+          if (filter._id && update.$inc && update.$inc.spaces !== undefined) {
+            const lesson = sampleLessons.find(l => l._id === filter._id.toString());
+            if (lesson) {
+              lesson.spaces += update.$inc.spaces;
+            }
+            return { acknowledged: true };
+          }
+          return {};
+        },
+        updateOne: async (filter, update, options) => {
+          // Simulate update for cart
+          if (filter.userId && update.$set && update.$set.items) {
+            inMemoryCart.items = update.$set.items;
+            return { acknowledged: true };
+          }
+          return {};
+        },
+        insertOne: async () => ({ insertedId: 'demo-id' }),
+        countDocuments: async () => sampleLessons.length,
+        listIndexes: async () => ({ toArray: async () => [] }),
+        createIndex: async () => {}
+      })
+    };
   }
 }
 
 await connectDB();
 
 const sampleLessons = [
-  { subject: 'Math Fundamentals', location: 'London', price: 20, spaces: 5, icon: 'fa-solid fa-square-root-variable' },
-  { subject: 'English Literature', location: 'Manchester', price: 25, spaces: 3, icon: 'fa-solid fa-book' },
-  { subject: 'Science Basics', location: 'Birmingham', price: 18, spaces: 7, icon: 'fa-solid fa-flask' },
-  { subject: 'History Studies', location: 'Leeds', price: 22, spaces: 4, icon: 'fa-solid fa-landmark' },
-  { subject: 'Art and Design', location: 'Liverpool', price: 30, spaces: 2, icon: 'fa-solid fa-palette' },
-  { subject: 'Computer Programming', location: 'Newcastle', price: 35, spaces: 6, icon: 'fa-solid fa-code' },
-  { subject: 'Music Theory', location: 'Sheffield', price: 28, spaces: 3, icon: 'fa-solid fa-music' },
-  { subject: 'Physical Education', location: 'Bristol', price: 15, spaces: 8, icon: 'fa-solid fa-running' },
-  { subject: 'Geography', location: 'Nottingham', price: 20, spaces: 5, icon: 'fa-solid fa-globe' },
-  { subject: 'Foreign Languages', location: 'Cardiff', price: 27, spaces: 4, icon: 'fa-solid fa-language' }
+  { _id: 'lesson1', subject: 'Math Fundamentals', location: 'London', price: 20, spaces: 10, icon: 'fa-solid fa-square-root-variable' },
+  { _id: 'lesson2', subject: 'English Literature', location: 'London', price: 25, spaces: 10, icon: 'fa-solid fa-book' },
+  { _id: 'lesson3', subject: 'Science Basics', location: 'London', price: 18, spaces: 10, icon: 'fa-solid fa-flask' },
+  { _id: 'lesson4', subject: 'History Studies', location: 'London', price: 22, spaces: 10, icon: 'fa-solid fa-landmark' },
+  { _id: 'lesson5', subject: 'Art and Design', location: 'London', price: 30, spaces: 10, icon: 'fa-solid fa-palette' },
+  { _id: 'lesson6', subject: 'Computer Programming', location: 'London', price: 35, spaces: 10, icon: 'fa-solid fa-code' },
+  { _id: 'lesson7', subject: 'Music Theory', location: 'London', price: 28, spaces: 10, icon: 'fa-solid fa-music' },
+  { _id: 'lesson8', subject: 'Physical Education', location: 'London', price: 15, spaces: 10, icon: 'fa-solid fa-running' },
+  { _id: 'lesson9', subject: 'Geography', location: 'London', price: 20, spaces: 10, icon: 'fa-solid fa-globe' },
+  { _id: 'lesson10', subject: 'Foreign Languages', location: 'London', price: 27, spaces: 10, icon: 'fa-solid fa-language' }
 ];
 
 async function renameFields() {
@@ -92,11 +142,13 @@ async function seedDB() {
 async function createIndexes() {
   try {
     const lessonsCollection = db.collection('lesson');
-    const indexes = await lessonsCollection.listIndexes().toArray();
-    const hasTextIndex = indexes.some(index => index.name === 'subject_text_location_text' || index.name === 'topic_text_location_text');
-    if (!hasTextIndex) {
-      await lessonsCollection.createIndex({ subject: 'text', location: 'text' }, { name: 'subject_text_location_text' });
-      console.log('Created text index');
+    if (lessonsCollection.listIndexes) {
+      const indexes = await lessonsCollection.listIndexes().toArray();
+      const hasTextIndex = indexes.some(index => index.name === 'subject_text_location_text' || index.name === 'topic_text_location_text');
+      if (!hasTextIndex) {
+        await lessonsCollection.createIndex({ subject: 'text', location: 'text' }, { name: 'subject_text_location_text' });
+        console.log('Created text index');
+      }
     }
   } catch (error) {
     console.error('Index creation error:', error);
@@ -143,16 +195,10 @@ app.get('/search', async (req, res) => {
 
 app.get('/orders', async (req, res) => {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-    const token = authHeader.substring(7);
-    jwt.verify(token, process.env.JWT_SECRET || 'secret', async (err, decoded) => {
-      if (err) return res.status(401).json({ error: 'Invalid token' });
-      const orders = await db.collection('order').find({ userId: new ObjectId(decoded.userId) }).sort({ createdAt: -1 }).toArray();
-      res.json(orders);
-    });
+    // For demo purposes, use a fixed user ID since auth is removed
+    const userId = new ObjectId('507f1f77bcf86cd799439011'); // Fixed demo user ID
+    const orders = await db.collection('order').find({ userId }).sort({ createdAt: -1 }).toArray();
+    res.json(orders);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch orders' });
   }
@@ -160,16 +206,10 @@ app.get('/orders', async (req, res) => {
 
 app.get('/cart', async (req, res) => {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-    const token = authHeader.substring(7);
-    jwt.verify(token, process.env.JWT_SECRET || 'secret', async (err, decoded) => {
-      if (err) return res.status(401).json({ error: 'Invalid token' });
-      const cart = await db.collection('cart').findOne({ userId: new ObjectId(decoded.userId) });
-      res.json(cart ? cart.items : []);
-    });
+    // For demo purposes, use a fixed user ID since auth is removed
+    const userId = new ObjectId('507f1f77bcf86cd799439011'); // Fixed demo user ID
+    const cart = await db.collection('cart').findOne({ userId });
+    res.json(cart ? cart.items : []);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch cart' });
   }
@@ -177,32 +217,25 @@ app.get('/cart', async (req, res) => {
 
 app.post('/cart/add', async (req, res) => {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'Unauthorized' });
+    // For demo purposes, use a fixed user ID since auth is removed
+    const userId = new ObjectId('507f1f77bcf86cd799439011'); // Fixed demo user ID
+    const { lessonId, qty } = req.body;
+    if (!lessonId || !qty) return res.status(400).json({ error: 'Lesson ID and quantity required' });
+    const lesson = await db.collection('lesson').findOne({ _id: lessonId });
+    if (!lesson || lesson.spaces < qty) return res.status(400).json({ error: 'Lesson not available or insufficient spaces' });
+    const cartCollection = db.collection('cart');
+    let cart = await cartCollection.findOne({ userId });
+    if (!cart) {
+      cart = { userId, items: [] };
     }
-    const token = authHeader.substring(7);
-    jwt.verify(token, process.env.JWT_SECRET || 'secret', async (err, decoded) => {
-      if (err) return res.status(401).json({ error: 'Invalid token' });
-      const { lessonId, qty } = req.body;
-      if (!lessonId || !qty) return res.status(400).json({ error: 'Lesson ID and quantity required' });
-      const lesson = await db.collection('lesson').findOne({ _id: new ObjectId(lessonId) });
-      if (!lesson || lesson.spaces < qty) return res.status(400).json({ error: 'Lesson not available or insufficient spaces' });
-      const cartCollection = db.collection('cart');
-      const userId = new ObjectId(decoded.userId);
-      let cart = await cartCollection.findOne({ userId });
-      if (!cart) {
-        cart = { userId, items: [] };
-      }
-      const existingItem = cart.items.find(item => item._id === lessonId);
-      if (existingItem) {
-        existingItem.qty += qty;
-      } else {
-        cart.items.push({ _id: lessonId, subject: lesson.subject, price: lesson.price, qty });
-      }
-      await cartCollection.updateOne({ userId }, { $set: { items: cart.items } }, { upsert: true });
-      res.json({ ok: true });
-    });
+    const existingItem = cart.items.find(item => item._id === lessonId);
+    if (existingItem) {
+      existingItem.qty += qty;
+    } else {
+      cart.items.push({ _id: lessonId, subject: lesson.subject, price: lesson.price, qty });
+    }
+    await cartCollection.updateOne({ userId }, { $set: { items: cart.items } }, { upsert: true });
+    res.json({ ok: true });
   } catch (error) {
     res.status(500).json({ error: 'Failed to add to cart' });
   }
@@ -210,24 +243,17 @@ app.post('/cart/add', async (req, res) => {
 
 app.post('/cart/remove', async (req, res) => {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'Unauthorized' });
+    // For demo purposes, use a fixed user ID since auth is removed
+    const userId = new ObjectId('507f1f77bcf86cd799439011'); // Fixed demo user ID
+    const { lessonId } = req.body;
+    if (!lessonId) return res.status(400).json({ error: 'Lesson ID required' });
+    const cartCollection = db.collection('cart');
+    const cart = await cartCollection.findOne({ userId });
+    if (cart) {
+      cart.items = cart.items.filter(item => item._id !== lessonId);
+      await cartCollection.updateOne({ userId }, { $set: { items: cart.items } });
     }
-    const token = authHeader.substring(7);
-    jwt.verify(token, process.env.JWT_SECRET || 'secret', async (err, decoded) => {
-      if (err) return res.status(401).json({ error: 'Invalid token' });
-      const { lessonId } = req.body;
-      if (!lessonId) return res.status(400).json({ error: 'Lesson ID required' });
-      const cartCollection = db.collection('cart');
-      const userId = new ObjectId(decoded.userId);
-      const cart = await cartCollection.findOne({ userId });
-      if (cart) {
-        cart.items = cart.items.filter(item => item._id !== lessonId);
-        await cartCollection.updateOne({ userId }, { $set: { items: cart.items } });
-      }
-      res.json({ ok: true });
-    });
+    res.json({ ok: true });
   } catch (error) {
     res.status(500).json({ error: 'Failed to remove from cart' });
   }
@@ -262,41 +288,35 @@ app.post('/login', async (req, res) => {
 
 app.post('/orders', async (req, res) => {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'Unauthorized' });
+    // For demo purposes, use a fixed user ID since auth is removed
+    const userId = new ObjectId('507f1f77bcf86cd799439011'); // Fixed demo user ID
+    const { name, phone, items } = req.body;
+    if (!name || !phone || !items || !Array.isArray(items)) {
+      return res.status(400).json({ error: 'Invalid order data' });
     }
-    const token = authHeader.substring(7);
-    jwt.verify(token, process.env.JWT_SECRET || 'secret', async (err, decoded) => {
-      if (err) return res.status(401).json({ error: 'Invalid token' });
-      const { name, phone, items } = req.body;
-      if (!name || !phone || !items || !Array.isArray(items)) {
-        return res.status(400).json({ error: 'Invalid order data' });
-      }
-      const nameRegex = /^[a-zA-Z\s]+$/;
-      const phoneRegex = /^\d{10,}$/;
-      if (!nameRegex.test(name) || !phoneRegex.test(phone)) {
-        return res.status(400).json({ error: 'Invalid name or phone (phone must be at least 10 digits)' });
-      }
-      let total = 0;
-      for (const item of items) {
-        const lesson = await db.collection('lesson').findOne({ _id: new ObjectId(item.lessonId) });
-        if (!lesson) return res.status(400).json({ error: 'Lesson not found' });
-        if (lesson.spaces < item.qty) return res.status(400).json({ error: 'Not enough spaces' });
-        total += lesson.price * item.qty;
-        await db.collection('lesson').updateOne({ _id: new ObjectId(item.lessonId) }, { $inc: { spaces: -item.qty } });
-      }
-      const order = {
-        userId: new ObjectId(decoded.userId),
-        name,
-        phone,
-        items,
-        total,
-        createdAt: new Date().toISOString()
-      };
-      const result = await db.collection('order').insertOne(order);
-      res.json({ ok: true, orderId: result.insertedId });
-    });
+    const nameRegex = /^[a-zA-Z\s]+$/;
+    const phoneRegex = /^\d{10,}$/;
+    if (!nameRegex.test(name) || !phoneRegex.test(phone)) {
+      return res.status(400).json({ error: 'Invalid name or phone (phone must be at least 10 digits)' });
+    }
+    let total = 0;
+    for (const item of items) {
+      const lesson = await db.collection('lesson').findOne({ _id: new ObjectId(item.lessonId) });
+      if (!lesson) return res.status(400).json({ error: 'Lesson not found' });
+      if (lesson.spaces < item.qty) return res.status(400).json({ error: 'Not enough spaces' });
+      total += lesson.price * item.qty;
+      await db.collection('lesson').updateOne({ _id: new ObjectId(item.lessonId) }, { $inc: { spaces: -item.qty } });
+    }
+    const order = {
+      userId,
+      name,
+      phone,
+      items,
+      total,
+      createdAt: new Date().toISOString()
+    };
+    const result = await db.collection('order').insertOne(order);
+    res.json({ ok: true, orderId: result.insertedId });
   } catch (error) {
     res.status(500).json({ error: 'Order creation failed' });
   }
