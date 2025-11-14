@@ -65,14 +65,6 @@ async function connectDB() {
           }
           return {};
         },
-        updateOne: async (filter, update, options) => {
-          // Simulate update for cart
-          if (filter.userId && update.$set && update.$set.items) {
-            inMemoryCart.items = update.$set.items;
-            return { acknowledged: true };
-          }
-          return {};
-        },
         insertOne: async () => ({ insertedId: 'demo-id' }),
         countDocuments: async () => sampleLessons.length,
         listIndexes: async () => ({ toArray: async () => [] }),
@@ -235,6 +227,8 @@ app.post('/cart/add', async (req, res) => {
       cart.items.push({ _id: lessonId, subject: lesson.subject, price: lesson.price, qty });
     }
     await cartCollection.updateOne({ userId }, { $set: { items: cart.items } }, { upsert: true });
+    // Decrement lesson spaces
+    await db.collection('lesson').updateOne({ _id: lessonId }, { $inc: { spaces: -qty } });
     res.json({ ok: true });
   } catch (error) {
     res.status(500).json({ error: 'Failed to add to cart' });
