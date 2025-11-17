@@ -11,7 +11,6 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-// Serve static files from the vue-app directory
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 app.use(express.static(path.join(__dirname, '../vue-app'), { index: 'index.html' }));
@@ -22,18 +21,19 @@ let db;
 let inMemoryCart = { userId: new ObjectId('507f1f77bcf86cd799439011'), items: [] };
 
 const sampleLessons = [
-  { _id: new ObjectId('69122bfeabae0cc1bdee6992'), subject: 'art', location: 'Barnet', price: 85, spaces: 4, image: 'art.jpg' },
-  { _id: new ObjectId('69122bfeabae0cc1bdee6993'), subject: 'coding', location: 'Finchley', price: 120, spaces: 4, image: 'coding.jpg' },
-  { _id: new ObjectId('69122bfeabae0cc1bdee6994'), subject: 'dance', location: 'Edgware', price: 65, spaces: 5, image: 'dance.jpg' },
-  { _id: new ObjectId('69122bfeabae0cc1bdee6995'), subject: 'drama', location: 'Wembley', price: 75, spaces: 5, image: 'drama.jpg' },
-  { _id: new ObjectId('69122bfeabae0cc1bdee698e'), subject: 'english', location: 'Colindale', price: 80, spaces: 5, image: 'english.jpg' },
-  { _id: new ObjectId('69122bfeabae0cc1bdee6990'), subject: 'history', location: 'Golders Green', price: 95, spaces: 5, image: 'history.jpg' },
-  { _id: new ObjectId('69122bfeabae0cc1bdee698d'), subject: 'math', location: 'Hendon', price: 100, spaces: 1, image: 'math.jpg' },
-  { _id: new ObjectId('69122bfeabae0cc1bdee6991'), subject: 'music', location: 'Mill Hill', price: 70, spaces: 5, image: 'music.jpg' },
-  { _id: new ObjectId('69122bfeabae0cc1bdee698f'), subject: 'science', location: 'Brent Cross', price: 90, spaces: 5, image: 'science.jpg' },
-  { _id: new ObjectId('69122bfeabae0cc1bdee6996'), subject: 'sports', location: 'Kingsbury', price: 60, spaces: 4, image: 'sports.jpg' }
+  { _id: new ObjectId('69122bfeabae0cc1bdee6992'), subject: 'art', location: 'Barnet', price: 85, spaces: 4, image: 'Art.jpg' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee6993'), subject: 'coding', location: 'Finchley', price: 120, spaces: 4, image: 'Coding.avif' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee6994'), subject: 'dance', location: 'Edgware', price: 65, spaces: 5, image: 'Dance.jpg' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee6995'), subject: 'drama', location: 'Wembley', price: 75, spaces: 5, image: 'Drama.jpg' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee698e'), subject: 'english', location: 'Colindale', price: 80, spaces: 5, image: 'English.jpg' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee6990'), subject: 'history', location: 'Golders Green', price: 95, spaces: 5, image: 'History.jpg' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee698d'), subject: 'math', location: 'Hendon', price: 100, spaces: 1, image: 'Maths.avif' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee6991'), subject: 'music', location: 'Mill Hill', price: 70, spaces: 5, image: 'Music.avif' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee698f'), subject: 'science', location: 'Brent Cross', price: 90, spaces: 5, image: 'Science.jpg' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee6996'), subject: 'sports', location: 'Kingsbury', price: 60, spaces: 4, image: 'Sports.jpg' }
 ];
 
+// Function to connect to the database
 async function connectDB() {
   try {
     await client.connect();
@@ -41,7 +41,6 @@ async function connectDB() {
     console.log('Connected to MongoDB');
   } catch (error) {
     console.error('MongoDB connection error:', error);
-    // For demo purposes, use in-memory data if MongoDB fails
     console.log('Using in-memory data for demo');
     db = {
       collection: (name) => ({
@@ -62,12 +61,10 @@ async function connectDB() {
           return null;
         },
         updateOne: async (filter, update, options) => {
-          // Simulate update for cart
           if (filter.userId && update.$set && update.$set.items) {
             inMemoryCart.items = update.$set.items;
             return { acknowledged: true };
           }
-          // Simulate update for lessons (decrement spaces)
           if (filter._id && update.$inc && update.$inc.spaces !== undefined) {
             const lesson = sampleLessons.find(l => l._id.equals(filter._id));
             if (lesson) {
@@ -78,11 +75,9 @@ async function connectDB() {
           return {};
         },
         insertOne: async (doc) => {
-          // Simulate successful insertion for all documents
           return { insertedId: 'demo-order-id' };
         },
         deleteOne: async (filter) => {
-          // Simulate successful deletion for cart items
           if (filter.lessonId && filter.userId) {
             inMemoryCart.items = inMemoryCart.items.filter(item => item._id !== filter.lessonId.toString());
           }
@@ -98,6 +93,7 @@ async function connectDB() {
 
 await connectDB();
 
+// Function to rename fields in the database
 async function renameFields() {
   try {
     const lessonsCollection = db.collection('lesson');
@@ -116,6 +112,7 @@ async function renameFields() {
   }
 }
 
+// Function to seed the database with sample lessons
 async function seedDB() {
   try {
     const lessonsCollection = db.collection('lesson');
@@ -124,7 +121,6 @@ async function seedDB() {
       await lessonsCollection.insertMany(sampleLessons);
       console.log('Seeded 10 sample lessons');
     } else {
-      // Reset spaces to 10 for all lessons on server restart
       await lessonsCollection.updateMany({}, { $set: { spaces: 10 } });
       console.log('Reset spaces to 10 for all lessons');
     }
@@ -133,6 +129,7 @@ async function seedDB() {
   }
 }
 
+// Function to create indexes for the database
 async function createIndexes() {
   try {
     const lessonsCollection = db.collection('lesson');
@@ -149,8 +146,7 @@ async function createIndexes() {
   }
 }
 
-
-
+// Route to get all lessons
 app.get('/lessons', async (req, res) => {
   try {
     const lessons = await db.collection('lesson').find({}).sort({ subject: 1 }).toArray();
@@ -160,6 +156,7 @@ app.get('/lessons', async (req, res) => {
   }
 });
 
+// Route to get a specific lesson by ID
 app.get('/lessons/:id', async (req, res) => {
   try {
     const lesson = await db.collection('lesson').findOne({ _id: new ObjectId(req.params.id) });
@@ -170,6 +167,7 @@ app.get('/lessons/:id', async (req, res) => {
   }
 });
 
+// Route to search lessons
 app.get('/search', async (req, res) => {
   try {
     const q = req.query.q;
@@ -187,10 +185,10 @@ app.get('/search', async (req, res) => {
   }
 });
 
+// Route to get orders
 app.get('/orders', async (req, res) => {
   try {
-    // For demo purposes, use a fixed user ID since auth is removed
-    const userId = new ObjectId('507f1f77bcf86cd799439011'); // Fixed demo user ID
+    const userId = new ObjectId('507f1f77bcf86cd799439011');
     const orders = await db.collection('order').find({ userId }).sort({ createdAt: -1 }).toArray();
     res.json(orders);
   } catch (error) {
@@ -198,10 +196,10 @@ app.get('/orders', async (req, res) => {
   }
 });
 
+// Route to get cart items
 app.get('/cart', async (req, res) => {
   try {
-    // For demo purposes, use a fixed user ID since auth is removed
-    const userId = new ObjectId('507f1f77bcf86cd799439011'); // Fixed demo user ID
+    const userId = new ObjectId('507f1f77bcf86cd799439011');
     const cart = await db.collection('cart').findOne({ userId });
     res.json(cart ? cart.items : []);
   } catch (error) {
@@ -209,10 +207,10 @@ app.get('/cart', async (req, res) => {
   }
 });
 
+// Route to add item to cart
 app.post('/cart/add', async (req, res) => {
   try {
-    // For demo purposes, use a fixed user ID since auth is removed
-    const userId = new ObjectId('507f1f77bcf86cd799439011'); // Fixed demo user ID
+    const userId = new ObjectId('507f1f77bcf86cd799439011');
     const { lessonId, qty } = req.body;
     if (!lessonId || !qty) return res.status(400).json({ error: 'Lesson ID and quantity required' });
     const lesson = await db.collection('lesson').findOne({ _id: new ObjectId(lessonId) });
@@ -229,7 +227,6 @@ app.post('/cart/add', async (req, res) => {
       cart.items.push({ _id: lessonId, subject: lesson.subject, price: lesson.price, qty });
     }
     await cartCollection.updateOne({ userId }, { $set: { items: cart.items } }, { upsert: true });
-    // Decrement lesson spaces
     await db.collection('lesson').updateOne({ _id: new ObjectId(lessonId) }, { $inc: { spaces: -qty } });
     res.json({ ok: true });
   } catch (error) {
@@ -237,10 +234,10 @@ app.post('/cart/add', async (req, res) => {
   }
 });
 
+// Route to remove item from cart
 app.post('/cart/remove', async (req, res) => {
   try {
-    // For demo purposes, use a fixed user ID since auth is removed
-    const userId = new ObjectId('507f1f77bcf86cd799439011'); // Fixed demo user ID
+    const userId = new ObjectId('507f1f77bcf86cd799439011');
     const { lessonId } = req.body;
     if (!lessonId) return res.status(400).json({ error: 'Lesson ID required' });
     const cartCollection = db.collection('cart');
@@ -255,14 +252,10 @@ app.post('/cart/remove', async (req, res) => {
   }
 });
 
-
-
-
-
+// Route to create an order
 app.post('/orders', async (req, res) => {
   try {
-    // For demo purposes, use a fixed user ID since auth is removed
-    const userId = new ObjectId('507f1f77bcf86cd799439011'); // Fixed demo user ID
+    const userId = new ObjectId('507f1f77bcf86cd799439011');
     const { name, phone, paymentMethod, cardNumber, cardName, expiryDate, securityCode, items } = req.body;
     if (!name || !phone || !paymentMethod || !items || !Array.isArray(items)) {
       return res.status(400).json({ error: 'Invalid order data' });
@@ -305,7 +298,6 @@ app.post('/orders', async (req, res) => {
       order.securityCode = securityCode;
     }
     const result = await db.collection('order').insertOne(order);
-    // Remove ordered items from cart
     const cartCollection = db.collection('cart');
     let cart = await cartCollection.findOne({ userId });
     if (cart) {
