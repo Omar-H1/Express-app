@@ -13,7 +13,6 @@ app.use(cors());
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-app.use(express.static(path.join(__dirname, '../vue-app'), { index: 'index.html' }));
 
 const client = new MongoClient(process.env.MONGODB_URI || 'mongodb://localhost:27017');
 const dbName = process.env.DB_NAME || 'afterschool';
@@ -21,16 +20,16 @@ let db;
 let inMemoryCart = { userId: new ObjectId('507f1f77bcf86cd799439011'), items: [] };
 
 const sampleLessons = [
-  { _id: new ObjectId('69122bfeabae0cc1bdee6992'), subject: 'art', location: 'Barnet', price: 85, spaces: 4, image: 'Art.jpg' },
-  { _id: new ObjectId('69122bfeabae0cc1bdee6993'), subject: 'coding', location: 'Finchley', price: 120, spaces: 4, image: 'Coding.jpg' },
-  { _id: new ObjectId('69122bfeabae0cc1bdee6994'), subject: 'dance', location: 'Edgware', price: 65, spaces: 5, image: 'Dance.jpg' },
-  { _id: new ObjectId('69122bfeabae0cc1bdee6995'), subject: 'drama', location: 'Wembley', price: 75, spaces: 5, image: 'Drama.jpg' },
-  { _id: new ObjectId('69122bfeabae0cc1bdee698e'), subject: 'english', location: 'Colindale', price: 80, spaces: 5, image: 'English.jpg' },
-  { _id: new ObjectId('69122bfeabae0cc1bdee6990'), subject: 'history', location: 'Golders Green', price: 95, spaces: 5, image: 'History.jpg' },
-  { _id: new ObjectId('69122bfeabae0cc1bdee698d'), subject: 'math', location: 'Hendon', price: 100, spaces: 1, image: 'Math.jpg' },
-  { _id: new ObjectId('69122bfeabae0cc1bdee6991'), subject: 'music', location: 'Mill Hill', price: 70, spaces: 5, image: 'Music.jpg' },
-  { _id: new ObjectId('69122bfeabae0cc1bdee698f'), subject: 'science', location: 'Brent Cross', price: 90, spaces: 5, image: 'Science.jpg' },
-  { _id: new ObjectId('69122bfeabae0cc1bdee6996'), subject: 'sports', location: 'Kingsbury', price: 60, spaces: 4, image: 'Sports.jpg' }
+  { _id: new ObjectId('69122bfeabae0cc1bdee6992'), subject: 'art', location: 'Barnet', price: 85, spaces: 10, image: 'Art.jpg' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee6993'), subject: 'coding', location: 'Finchley', price: 120, spaces: 10, image: 'Coding.jpg' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee6994'), subject: 'dance', location: 'Edgware', price: 65, spaces: 10, image: 'Dance.jpg' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee6995'), subject: 'drama', location: 'Wembley', price: 75, spaces: 10, image: 'Drama.jpg' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee698e'), subject: 'english', location: 'Colindale', price: 80, spaces: 10, image: 'English.jpg' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee6990'), subject: 'history', location: 'Golders Green', price: 95, spaces: 10, image: 'History.jpg' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee698d'), subject: 'math', location: 'Hendon', price: 100, spaces: 10, image: 'Math.jpg' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee6991'), subject: 'music', location: 'Mill Hill', price: 70, spaces: 10, image: 'Music.jpg' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee698f'), subject: 'science', location: 'Brent Cross', price: 90, spaces: 10, image: 'Science.jpg' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee6996'), subject: 'sports', location: 'Kingsbury', price: 60, spaces: 10, image: 'Sports.jpg' }
 ];
 
 // Function to connect to the database
@@ -74,6 +73,13 @@ async function connectDB() {
           }
           return {};
         },
+        updateMany: async (filter, update, options) => {
+          if (update.$set && update.$set.spaces !== undefined) {
+            sampleLessons.forEach(lesson => lesson.spaces = update.$set.spaces);
+            return { acknowledged: true };
+          }
+          return {};
+        },
         insertOne: async (doc) => {
           return { insertedId: 'demo-order-id' };
         },
@@ -82,6 +88,15 @@ async function connectDB() {
             inMemoryCart.items = inMemoryCart.items.filter(item => item._id !== filter.lessonId.toString());
           }
           return { acknowledged: true };
+        },
+        find: () => ({
+          toArray: async () => [],
+          sort: () => ({
+            toArray: async () => []
+          })
+        }),
+        insertOne: async (doc) => {
+          return { insertedId: 'demo-order-id' };
         },
         countDocuments: async () => sampleLessons.length,
         listIndexes: async () => ({ toArray: async () => [] }),
@@ -315,6 +330,7 @@ app.listen(port, async () => {
   await renameFields();
   await createIndexes();
   await resetSpaces();
+  await resetCart();
   if (process.argv.includes('--seed')) {
     await seedDB();
   }
@@ -328,5 +344,16 @@ async function resetSpaces() {
     console.log('Reset spaces to 10 for all lessons');
   } catch (error) {
     console.error('Reset spaces error:', error);
+  }
+}
+
+// Function to reset cart
+async function resetCart() {
+  try {
+    const cartCollection = db.collection('cart');
+    await cartCollection.deleteMany({});
+    console.log('Reset cart');
+  } catch (error) {
+    console.error('Reset cart error:', error);
   }
 }
