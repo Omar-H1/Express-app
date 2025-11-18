@@ -22,13 +22,13 @@ let inMemoryCart = { userId: new ObjectId('507f1f77bcf86cd799439011'), items: []
 
 const sampleLessons = [
   { _id: new ObjectId('69122bfeabae0cc1bdee6992'), subject: 'art', location: 'Barnet', price: 85, spaces: 4, image: 'Art.jpg' },
-  { _id: new ObjectId('69122bfeabae0cc1bdee6993'), subject: 'coding', location: 'Finchley', price: 120, spaces: 4, image: 'Coding.avif' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee6993'), subject: 'coding', location: 'Finchley', price: 120, spaces: 4, image: 'Coding.jpg' },
   { _id: new ObjectId('69122bfeabae0cc1bdee6994'), subject: 'dance', location: 'Edgware', price: 65, spaces: 5, image: 'Dance.jpg' },
   { _id: new ObjectId('69122bfeabae0cc1bdee6995'), subject: 'drama', location: 'Wembley', price: 75, spaces: 5, image: 'Drama.jpg' },
   { _id: new ObjectId('69122bfeabae0cc1bdee698e'), subject: 'english', location: 'Colindale', price: 80, spaces: 5, image: 'English.jpg' },
   { _id: new ObjectId('69122bfeabae0cc1bdee6990'), subject: 'history', location: 'Golders Green', price: 95, spaces: 5, image: 'History.jpg' },
-  { _id: new ObjectId('69122bfeabae0cc1bdee698d'), subject: 'math', location: 'Hendon', price: 100, spaces: 1, image: 'Maths.avif' },
-  { _id: new ObjectId('69122bfeabae0cc1bdee6991'), subject: 'music', location: 'Mill Hill', price: 70, spaces: 5, image: 'Music.avif' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee698d'), subject: 'math', location: 'Hendon', price: 100, spaces: 1, image: 'Math.jpg' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee6991'), subject: 'music', location: 'Mill Hill', price: 70, spaces: 5, image: 'Music.jpg' },
   { _id: new ObjectId('69122bfeabae0cc1bdee698f'), subject: 'science', location: 'Brent Cross', price: 90, spaces: 5, image: 'Science.jpg' },
   { _id: new ObjectId('69122bfeabae0cc1bdee6996'), subject: 'sports', location: 'Kingsbury', price: 60, spaces: 4, image: 'Sports.jpg' }
 ];
@@ -227,7 +227,6 @@ app.post('/cart/add', async (req, res) => {
       cart.items.push({ _id: lessonId, subject: lesson.subject, price: lesson.price, qty });
     }
     await cartCollection.updateOne({ userId }, { $set: { items: cart.items } }, { upsert: true });
-    await db.collection('lesson').updateOne({ _id: new ObjectId(lessonId) }, { $inc: { spaces: -qty } });
     res.json({ ok: true });
   } catch (error) {
     res.status(500).json({ error: 'Failed to add to cart' });
@@ -315,7 +314,19 @@ app.listen(port, async () => {
   console.log(`Server running on port ${port}`);
   await renameFields();
   await createIndexes();
+  await resetSpaces();
   if (process.argv.includes('--seed')) {
     await seedDB();
   }
 });
+
+// Function to reset spaces to 10 for all lessons
+async function resetSpaces() {
+  try {
+    const lessonsCollection = db.collection('lesson');
+    await lessonsCollection.updateMany({}, { $set: { spaces: 10 } });
+    console.log('Reset spaces to 10 for all lessons');
+  } catch (error) {
+    console.error('Reset spaces error:', error);
+  }
+}
