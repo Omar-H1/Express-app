@@ -8,11 +8,15 @@ import { fileURLToPath } from 'url';
 dotenv.config();
 
 const app = express();
-app.use(express.json());
-app.use(cors());
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+app.use(express.json());
+app.use(cors());
+
+// Serve static files from the Vue app directory
+app.use(express.static(path.resolve(__dirname, '../vue-app')));
 
 const client = new MongoClient(process.env.MONGODB_URI || 'mongodb://localhost:27017');
 const dbName = process.env.DB_NAME || 'afterschool';
@@ -20,90 +24,77 @@ let db;
 let inMemoryCart = { userId: new ObjectId('507f1f77bcf86cd799439011'), items: [] };
 
 const sampleLessons = [
-  { _id: new ObjectId('69122bfeabae0cc1bdee6992'), subject: 'art', location: 'Barnet', price: 85, spaces: 10, image: 'Art.jpg' },
-  { _id: new ObjectId('69122bfeabae0cc1bdee6993'), subject: 'coding', location: 'Finchley', price: 120, spaces: 10, image: 'Coding.jpg' },
-  { _id: new ObjectId('69122bfeabae0cc1bdee6994'), subject: 'dance', location: 'Edgware', price: 65, spaces: 10, image: 'Dance.jpg' },
-  { _id: new ObjectId('69122bfeabae0cc1bdee6995'), subject: 'drama', location: 'Wembley', price: 75, spaces: 10, image: 'Drama.jpg' },
-  { _id: new ObjectId('69122bfeabae0cc1bdee698e'), subject: 'english', location: 'Colindale', price: 80, spaces: 10, image: 'English.jpg' },
-  { _id: new ObjectId('69122bfeabae0cc1bdee6990'), subject: 'history', location: 'Golders Green', price: 95, spaces: 10, image: 'History.jpg' },
-  { _id: new ObjectId('69122bfeabae0cc1bdee698d'), subject: 'math', location: 'Hendon', price: 100, spaces: 10, image: 'Math.jpg' },
-  { _id: new ObjectId('69122bfeabae0cc1bdee6991'), subject: 'music', location: 'Mill Hill', price: 70, spaces: 10, image: 'Music.jpg' },
-  { _id: new ObjectId('69122bfeabae0cc1bdee698f'), subject: 'science', location: 'Brent Cross', price: 90, spaces: 10, image: 'Science.jpg' },
-  { _id: new ObjectId('69122bfeabae0cc1bdee6996'), subject: 'sports', location: 'Kingsbury', price: 60, spaces: 10, image: 'Sports.jpg' }
+  { _id: new ObjectId('69122bfeabae0cc1bdee6992'), subject: 'art', location: 'A 12', price: 5, spaces: 10, image: 'Art.jpg' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee6993'), subject: 'coding', location: 'B 07', price: 10, spaces: 10, image: 'Coding.jpg' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee6994'), subject: 'dance', location: 'C 15', price: 15, spaces: 10, image: 'Dance.jpg' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee6995'), subject: 'drama', location: 'D 22', price: 20, spaces: 10, image: 'Drama.jpg' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee698e'), subject: 'english', location: 'E 03', price: 25, spaces: 10, image: 'English.jpg' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee6990'), subject: 'history', location: 'F 18', price: 5, spaces: 10, image: 'History.jpg' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee698d'), subject: 'math', location: 'G 09', price: 10, spaces: 10, image: 'Math.jpg' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee6991'), subject: 'music', location: 'H 14', price: 15, spaces: 10, image: 'Music.jpg' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee698f'), subject: 'science', location: 'I 21', price: 20, spaces: 10, image: 'Science.jpg' },
+  { _id: new ObjectId('69122bfeabae0cc1bdee6996'), subject: 'sports', location: 'J 06', price: 25, spaces: 10, image: 'Sports.jpg' }
 ];
 
 // Function to connect to the database
 async function connectDB() {
-  try {
-    await client.connect();
-    db = client.db(dbName);
-    console.log('Connected to MongoDB');
-  } catch (error) {
-    console.error('MongoDB connection error:', error);
-    console.log('Using in-memory data for demo');
-    db = {
-      collection: (name) => ({
-        find: () => ({
-          toArray: async () => sampleLessons,
-          sort: () => ({
-            toArray: async () => sampleLessons.sort((a, b) => a.subject.localeCompare(b.subject))
-          })
-        }),
-        findOne: async (query) => {
-          if (query._id) {
-            const id = typeof query._id === 'string' ? new ObjectId(query._id) : query._id;
-            return sampleLessons.find(l => l._id.equals(id));
+  console.log('Using in-memory data for demo');
+  db = {
+    collection: (name) => ({
+      find: () => ({
+        toArray: async () => [...sampleLessons],
+        sort: (criteria) => ({
+          toArray: async () => {
+            const sorted = [...sampleLessons].sort((a, b) => a.subject.localeCompare(b.subject));
+            return sorted;
           }
-          if (query.userId) {
-            return inMemoryCart;
-          }
-          return null;
-        },
-        updateOne: async (filter, update, options) => {
-          if (filter.userId && update.$set && update.$set.items) {
-            inMemoryCart.items = update.$set.items;
-            return { acknowledged: true };
-          }
-          if (filter._id && update.$inc && update.$inc.spaces !== undefined) {
-            const lesson = sampleLessons.find(l => l._id.equals(filter._id));
-            if (lesson) {
-              lesson.spaces += update.$inc.spaces;
-            }
-            return { acknowledged: true };
-          }
-          return {};
-        },
-        updateMany: async (filter, update, options) => {
-          if (update.$set && update.$set.spaces !== undefined) {
-            sampleLessons.forEach(lesson => lesson.spaces = update.$set.spaces);
-            return { acknowledged: true };
-          }
-          return {};
-        },
-        insertOne: async (doc) => {
-          return { insertedId: 'demo-order-id' };
-        },
-        deleteOne: async (filter) => {
-          if (filter.lessonId && filter.userId) {
-            inMemoryCart.items = inMemoryCart.items.filter(item => item._id !== filter.lessonId.toString());
+        })
+      }),
+      findOne: async (query) => {
+        if (query._id) {
+          const id = typeof query._id === 'string' ? new ObjectId(query._id) : query._id;
+          return sampleLessons.find(l => l._id.equals(id));
+        }
+        if (query.userId) {
+          return inMemoryCart;
+        }
+        return null;
+      },
+      updateOne: async (filter, update, options) => {
+        if (filter.userId && update.$set && update.$set.items) {
+          inMemoryCart.items = update.$set.items;
+          return { acknowledged: true };
+        }
+        if (filter._id && update.$inc && update.$inc.spaces !== undefined) {
+          const lesson = sampleLessons.find(l => l._id.equals(filter._id));
+          if (lesson) {
+            lesson.spaces += update.$inc.spaces;
           }
           return { acknowledged: true };
-        },
-        find: () => ({
-          toArray: async () => [],
-          sort: () => ({
-            toArray: async () => []
-          })
-        }),
-        insertOne: async (doc) => {
-          return { insertedId: 'demo-order-id' };
-        },
-        countDocuments: async () => sampleLessons.length,
-        listIndexes: async () => ({ toArray: async () => [] }),
-        createIndex: async () => {}
-      })
-    };
-  }
+        }
+        return {};
+      },
+      updateMany: async (filter, update, options) => {
+        if (update.$set && update.$set.spaces !== undefined) {
+          sampleLessons.forEach(lesson => lesson.spaces = update.$set.spaces);
+          return { acknowledged: true };
+        }
+        return {};
+      },
+      insertOne: async (doc) => {
+        return { insertedId: 'demo-order-id' };
+      },
+      deleteOne: async (filter) => {
+        if (filter.lessonId && filter.userId) {
+          inMemoryCart.items = inMemoryCart.items.filter(item => item._id !== filter.lessonId.toString());
+        }
+        return { acknowledged: true };
+      },
+      countDocuments: async () => sampleLessons.length,
+      listIndexes: async () => ({ toArray: async () => [] }),
+      createIndex: async () => {}
+    })
+  };
 }
 
 await connectDB();
@@ -324,16 +315,19 @@ app.post('/orders', async (req, res) => {
   }
 });
 
+// Catch-all handler: send back index.html for any non-API routes to support SPA routing
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../vue-app/index.html'));
+});
+
 const port = process.env.PORT || 8080;
 app.listen(port, async () => {
   console.log(`Server running on port ${port}`);
   await renameFields();
   await createIndexes();
+  await seedDB();
   await resetSpaces();
   await resetCart();
-  if (process.argv.includes('--seed')) {
-    await seedDB();
-  }
 });
 
 // Function to reset spaces to 10 for all lessons
