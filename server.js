@@ -21,7 +21,6 @@ app.use(express.static(path.resolve(__dirname, '../vue-app')));
 const client = new MongoClient(process.env.MONGODB_URI || 'mongodb://localhost:27017');
 const dbName = process.env.DB_NAME || 'afterschool';
 let db;
-let inMemoryCart = { userId: new ObjectId('507f1f77bcf86cd799439011'), items: [] };
 
 const sampleLessons = [
   { _id: new ObjectId('69122bfeabae0cc1bdee6992'), subject: 'art', location: 'A 12', price: 5, spaces: 10, image: 'Art.jpg' },
@@ -38,63 +37,88 @@ const sampleLessons = [
 
 // Function to connect to the database
 async function connectDB() {
-  console.log('Using in-memory data for demo');
-  db = {
-    collection: (name) => ({
-      find: () => ({
-        toArray: async () => [...sampleLessons],
-        sort: (criteria) => ({
+  try {
+    await client.connect();
+    db = client.db(dbName);
+    console.log('Connected to MongoDB');
+  } catch (error) {
+    console.error('Failed to connect to MongoDB, using in-memory data for demo:', error.message);
+    let inMemoryCart = { userId: new ObjectId('507f1f77bcf86cd799439011'), items: [] };
+    let inMemoryOrders = [];
+    db = {
+      collection: (name) => ({
+        find: (query) => ({
           toArray: async () => {
-            const sorted = [...sampleLessons].sort((a, b) => a.subject.localeCompare(b.subject));
-            return sorted;
+            if (query && query.userId) {
+              return inMemoryOrders.filter(order => order.userId.equals(query.userId));
+            }
+            return [...sampleLessons];
+          },
+          sort: (criteria) => ({
+            toArray: async () => {
+              if (query && query.userId) {
+                let orders = inMemoryOrders.filter(order => order.userId.equals(query.userId));
+                if (criteria.createdAt === -1) {
+                  orders = orders.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+                }
+                return orders;
+              }
+              const sorted = [...sampleLessons].sort((a, b) => a.subject.localeCompare(b.subject));
+              return sorted;
+            }
+          })
+        }),
+        findOne: async (query) => {
+          if (query._id) {
+            const id = typeof query._id === 'string' ? new ObjectId(query._id) : query._id;
+            return sampleLessons.find(l => l._id.equals(id));
           }
-        })
-      }),
-      findOne: async (query) => {
-        if (query._id) {
-          const id = typeof query._id === 'string' ? new ObjectId(query._id) : query._id;
-          return sampleLessons.find(l => l._id.equals(id));
-        }
-        if (query.userId) {
-          return inMemoryCart;
-        }
-        return null;
-      },
-      updateOne: async (filter, update, options) => {
-        if (filter.userId && update.$set && update.$set.items) {
-          inMemoryCart.items = update.$set.items;
-          return { acknowledged: true };
-        }
-        if (filter._id && update.$inc && update.$inc.spaces !== undefined) {
-          const lesson = sampleLessons.find(l => l._id.equals(filter._id));
-          if (lesson) {
-            lesson.spaces += update.$inc.spaces;
+          if (query.userId) {
+            return inMemoryCart;
+          }
+          return null;
+        },
+        updateOne: async (filter, update, options) => {
+          if (filter.userId && update.$set && update.$set.items) {
+            inMemoryCart.items = update.$set.items;
+            return { acknowledged: true };
+          }
+          if (filter._id && update.$inc && update.$inc.spaces !== undefined) {
+            const lesson = sampleLessons.find(l => l._id.equals(filter._id));
+            if (lesson) {
+              lesson.spaces += update.$inc.spaces;
+            }
+            return { acknowledged: true };
+          }
+          return {};
+        },
+        updateMany: async (filter, update, options) => {
+          if (update.$set && update.$set.spaces !== undefined) {
+            sampleLessons.forEach(lesson => lesson.spaces = update.$set.spaces);
+            return { acknowledged: true };
+          }
+          return {};
+        },
+        insertOne: async (doc) => {
+          if (name === 'order') {
+            inMemoryOrders.push(doc);
+            return { insertedId: 'demo-order-id' };
+          }
+          return { insertedId: 'demo-order-id' };
+        },
+        deleteOne: async (filter) => {
+          if (filter.lessonId && filter.userId) {
+            inMemoryCart.items = inMemoryCart.items.filter(item => item._id !== filter.lessonId.toString());
           }
           return { acknowledged: true };
-        }
-        return {};
-      },
-      updateMany: async (filter, update, options) => {
-        if (update.$set && update.$set.spaces !== undefined) {
-          sampleLessons.forEach(lesson => lesson.spaces = update.$set.spaces);
-          return { acknowledged: true };
-        }
-        return {};
-      },
-      insertOne: async (doc) => {
-        return { insertedId: 'demo-order-id' };
-      },
-      deleteOne: async (filter) => {
-        if (filter.lessonId && filter.userId) {
-          inMemoryCart.items = inMemoryCart.items.filter(item => item._id !== filter.lessonId.toString());
-        }
-        return { acknowledged: true };
-      },
-      countDocuments: async () => sampleLessons.length,
-      listIndexes: async () => ({ toArray: async () => [] }),
-      createIndex: async () => {}
-    })
-  };
+        },
+        countDocuments: async () => sampleLessons.length,
+        listIndexes: () => ({ toArray: async () => [] }),
+        createIndex: async () => {},
+        deleteMany: async () => {}
+      })
+    };
+  }
 }
 
 await connectDB();
@@ -127,8 +151,14 @@ async function seedDB() {
       await lessonsCollection.insertMany(sampleLessons);
       console.log('Seeded 10 sample lessons');
     } else {
-      await lessonsCollection.updateMany({}, { $set: { spaces: 10 } });
-      console.log('Reset spaces to 10 for all lessons');
+      // Update prices to match sampleLessons and reset spaces
+      for (const sampleLesson of sampleLessons) {
+        await lessonsCollection.updateOne(
+          { _id: sampleLesson._id },
+          { $set: { price: sampleLesson.price, spaces: 10 } }
+        );
+      }
+      console.log('Updated prices and reset spaces to 10 for all lessons');
     }
   } catch (error) {
     console.error('Seeding error:', error);
@@ -266,9 +296,9 @@ app.post('/orders', async (req, res) => {
       return res.status(400).json({ error: 'Invalid order data' });
     }
     const nameRegex = /^[a-zA-Z\s]+$/;
-    const phoneRegex = /^\d{10,}$/;
+    const phoneRegex = /^((\+44\d{10})|(0\d{10}))$/;
     if (!nameRegex.test(name) || !phoneRegex.test(phone)) {
-      return res.status(400).json({ error: 'Invalid name or phone (phone must be at least 10 digits)' });
+      return res.status(400).json({ error: 'Invalid name or phone (phone must be a valid UK phone number starting with 0 or +44)' });
     }
     if (paymentMethod === 'online') {
       const cardNumberRegex = /^\d{16}$/;
@@ -328,6 +358,7 @@ app.listen(port, async () => {
   await seedDB();
   await resetSpaces();
   await resetCart();
+  await resetOrders();
 });
 
 // Function to reset spaces to 10 for all lessons
@@ -349,5 +380,16 @@ async function resetCart() {
     console.log('Reset cart');
   } catch (error) {
     console.error('Reset cart error:', error);
+  }
+}
+
+// Function to reset orders
+async function resetOrders() {
+  try {
+    const ordersCollection = db.collection('order');
+    await ordersCollection.deleteMany({});
+    console.log('Reset orders');
+  } catch (error) {
+    console.error('Reset orders error:', error);
   }
 }
